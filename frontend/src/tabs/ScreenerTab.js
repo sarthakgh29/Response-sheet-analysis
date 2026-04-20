@@ -1,0 +1,2 @@
+import { QuestionCard } from '../components/cards/QuestionCard.js';
+export function ScreenerTab(sheetData) { const screener = sheetData.analysis.meta.screener; return `${QuestionCard('Study type', screener.studyType)}${QuestionCard('Total screenouts', `${screener.totalOut} (Panel: ${screener.psfCount}, Wave: ${screener.wsfCount})`)}${QuestionCard('Primary panel question', screener.primPSF?.qText || '--')}${QuestionCard('Primary wave question', screener.primWSF?.qText || '--')}`; }

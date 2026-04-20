@@ -1,0 +1,1 @@
+export function OutlierCard(respondent) { return `<div class="mini-card"><strong>${respondent.firstName} ${respondent.lastName}</strong><div>ID: ${respondent.id}</div><div>NPI: ${respondent.npi || '--'}</div><div>Type: ${respondent.outlierType}</div></div>`; }
