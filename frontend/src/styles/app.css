@@ -2145,3 +2145,59 @@ th {
   flex: 0 0 52px;
   width: 52px;
 }
+/* ===== QUESTION CHANGE TAB SCROLL + LABEL CLEANUP ===== */
+.cmp-question-list-grid {
+  align-items: stretch;
+}
+
+.cmp-question-list-card {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px;
+  height: 440px;
+  min-height: 440px;
+  overflow: hidden;
+}
+
+.cmp-question-list-card .cmp-card-title {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cmp-question-list-subtitle {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+.cmp-question-list-scroll {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+}
+
+.cmp-question-list-item {
+  border: 1px solid #d9deea;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfbfd;
+  display: grid;
+  gap: 5px;
+}
+
+.cmp-question-copy {
+  line-height: 1.55;
+}
+
+.cmp-single-list-grid .cmp-question-list-card {
+  width: 100%;
+}
+
+@media (max-width: 960px) {
+  .cmp-question-list-card {
+    height: 360px;
+    min-height: 360px;
+  }
+}

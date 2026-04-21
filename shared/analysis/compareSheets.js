@@ -28,6 +28,10 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function round1(value) {
+  return Number((value || 0).toFixed(1));
+}
+
 function compareMetric(a, b) {
   const aNum = toNumber(a);
   const bNum = toNumber(b);
@@ -42,8 +46,7 @@ function compareMetric(a, b) {
   }
 
   const delta = Number((bNum - aNum).toFixed(2));
-  const pctChange =
-    aNum === 0 ? null : Number((((bNum - aNum) / aNum) * 100).toFixed(1));
+  const pctChange = aNum === 0 ? null : Number((((bNum - aNum) / aNum) * 100).toFixed(1));
 
   return {
     waveA: aNum,
@@ -155,9 +158,7 @@ function compareCategoricalQuestions(catA = [], catB = []) {
         waveA_pct: qA.catStats?.pct?.[option] ?? 0,
         waveB_count: qB.catStats?.counts?.[option] ?? 0,
         waveB_pct: qB.catStats?.pct?.[option] ?? 0,
-        delta_pct: Number(
-          ((qB.catStats?.pct?.[option] ?? 0) - (qA.catStats?.pct?.[option] ?? 0)).toFixed(1)
-        ),
+        delta_pct: Number(((qB.catStats?.pct?.[option] ?? 0) - (qA.catStats?.pct?.[option] ?? 0)).toFixed(1)),
       })),
     };
   });
@@ -242,11 +243,77 @@ function compareOutliers(metaA, metaB) {
   };
 }
 
+function buildComparableQuestionMap(analysis = {}) {
+  const map = new Map();
+  const push = (questions = [], type) => {
+    questions.forEach((q) => {
+      const code = normalizeCode(q.code);
+      const text = normalizeText(q.text || q.questionText || code);
+      if (!code || isDerivedOrLogicQuestion(code, text)) return;
+
+      const existing = map.get(code);
+      if (!existing) {
+        map.set(code, { code, text, types: [type] });
+        return;
+      }
+
+      if (!existing.types.includes(type)) existing.types.push(type);
+      if ((!existing.text || existing.text === existing.code) && text) existing.text = text;
+    });
+  };
+
+  push(analysis.scaleQs || [], 'Scale');
+  push(analysis.catQs || [], 'Categorical');
+  return map;
+}
+
+function buildQuestionOverlapSummary(analysisA, analysisB) {
+  const mapA = buildComparableQuestionMap(analysisA);
+  const mapB = buildComparableQuestionMap(analysisB);
+
+  const allCodes = [...new Set([...mapA.keys(), ...mapB.keys()])].sort();
+  const sharedCodes = allCodes.filter((code) => mapA.has(code) && mapB.has(code));
+  const onlyInWaveA = allCodes.filter((code) => mapA.has(code) && !mapB.has(code));
+  const onlyInWaveB = allCodes.filter((code) => mapB.has(code) && !mapA.has(code));
+
+  const totalUniqueQuestions = allCodes.length;
+  const samePct = totalUniqueQuestions ? round1((sharedCodes.length / totalUniqueQuestions) * 100) : 0;
+  const differentCount = onlyInWaveA.length + onlyInWaveB.length;
+  const differentPct = totalUniqueQuestions ? round1((differentCount / totalUniqueQuestions) * 100) : 0;
+
+  const buildRows = (codes, primaryMap, secondaryMap) =>
+    codes.map((code) => {
+      const row = primaryMap.get(code) || secondaryMap.get(code);
+      return {
+        code,
+        text: row?.text || code,
+        types: row?.types || [],
+      };
+    });
+
+  return {
+    totalWaveAQuestions: mapA.size,
+    totalWaveBQuestions: mapB.size,
+    totalUniqueQuestions,
+    sharedQuestionCount: sharedCodes.length,
+    onlyInWaveACount: onlyInWaveA.length,
+    onlyInWaveBCount: onlyInWaveB.length,
+    samePct,
+    differentPct,
+    overlapPct: samePct,
+    comparisonMode: samePct >= 50 ? 'full' : 'questions-only',
+    sharedQuestions: buildRows(sharedCodes, mapA, mapB),
+    onlyInWaveA: buildRows(onlyInWaveA, mapA, mapB),
+    onlyInWaveB: buildRows(onlyInWaveB, mapB, mapA),
+  };
+}
+
 function buildSummary({
   overviewComparison,
   scaleComparison,
   categoricalComparison,
   screenerComparison,
+  questionOverlapSummary,
 }) {
   return {
     headline: 'Wave comparison generated successfully.',
@@ -257,6 +324,8 @@ function buildSummary({
     screenerShift: screenerComparison.totalScreenouts.delta,
     sharedScaleQuestions: scaleComparison.totalSharedScaleQuestions,
     sharedCategoricalQuestions: categoricalComparison.totalSharedCategoricalQuestions,
+    overlapPct: questionOverlapSummary.overlapPct,
+    comparisonMode: questionOverlapSummary.comparisonMode,
   };
 }
 
@@ -266,19 +335,18 @@ export function compareSheets(analysisA, analysisB, meta = {}) {
 
   const overviewComparison = compareOverview(metaA, metaB);
   const scaleComparison = compareScaleQuestions(analysisA.scaleQs || [], analysisB.scaleQs || []);
-  const categoricalComparison = compareCategoricalQuestions(
-    analysisA.catQs || [],
-    analysisB.catQs || []
-  );
+  const categoricalComparison = compareCategoricalQuestions(analysisA.catQs || [], analysisB.catQs || []);
   const timelineComparison = compareTimeline(metaA, metaB);
   const screenerComparison = compareScreeners(metaA, metaB);
   const outlierComparison = compareOutliers(metaA, metaB);
+  const questionOverlapSummary = buildQuestionOverlapSummary(analysisA, analysisB);
 
   const summary = buildSummary({
     overviewComparison,
     scaleComparison,
     categoricalComparison,
     screenerComparison,
+    questionOverlapSummary,
   });
 
   return {
@@ -287,6 +355,7 @@ export function compareSheets(analysisA, analysisB, meta = {}) {
       waveALabel: meta.waveALabel || 'Wave A',
       waveBLabel: meta.waveBLabel || 'Wave B',
       studyType: meta.studyType || metaA.screener?.studyType || metaB.screener?.studyType || null,
+      comparisonMode: questionOverlapSummary.comparisonMode,
     },
     overviewComparison,
     screenerComparison,
@@ -294,6 +363,7 @@ export function compareSheets(analysisA, analysisB, meta = {}) {
     scaleComparison,
     categoricalComparison,
     outlierComparison,
+    questionOverlapSummary,
     summary,
   };
 }

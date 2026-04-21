@@ -2,68 +2,93 @@ function normalizeCode(code) {
   return String(code || '').trim();
 }
 
-function getComparableQuestionCodes(analysis) {
-  const scaleCodes = (analysis.scaleQs || []).map((q) => normalizeCode(q.code));
-  const catCodes = (analysis.catQs || []).map((q) => normalizeCode(q.code));
-  return [...new Set([...scaleCodes, ...catCodes].filter(Boolean))];
+function normalizeText(text) {
+  return String(text || '').trim();
+}
+
+function isDerivedOrLogicQuestion(code, text) {
+  const c = normalizeCode(code);
+  const t = normalizeText(text);
+
+  if (!c || !t) return true;
+  if (/^EQ_/i.test(c)) return true;
+  if (/^S0_/i.test(c)) return true;
+  if (/^BP/i.test(c)) return true;
+
+  if (/^\{if\s*\(/i.test(t)) return true;
+  if (/^\{.*\}$/i.test(t) && /(if\s*\(|==|!=|\|\||&&)/i.test(t)) return true;
+  if (/[{}]/.test(t) && /(if\s*\(|==|!=|\|\||&&)/i.test(t)) return true;
+
+  return false;
+}
+
+function buildQuestionMap(analysis = {}) {
+  const map = new Map();
+  const push = (questions = [], type) => {
+    questions.forEach((q) => {
+      const code = normalizeCode(q.code);
+      const text = normalizeText(q.text || q.questionText || code);
+      if (!code || isDerivedOrLogicQuestion(code, text)) return;
+
+      const existing = map.get(code);
+      if (!existing) {
+        map.set(code, { code, text, types: [type] });
+        return;
+      }
+
+      if (!existing.types.includes(type)) existing.types.push(type);
+      if ((!existing.text || existing.text === existing.code) && text) existing.text = text;
+    });
+  };
+
+  push(analysis.scaleQs || [], 'Scale');
+  push(analysis.catQs || [], 'Categorical');
+  return map;
+}
+
+function round1(value) {
+  return Number((value || 0).toFixed(1));
 }
 
 export function validateComparison(analysisA, analysisB) {
-  const errors = [];
-  const warnings = [];
-
   if (!analysisA || !analysisB) {
     return {
       valid: false,
-      errors: ['One or both analyses are missing.'],
-      warnings: [],
-      metrics: null,
+      errors: ['Missing analysis for one or both sheets.'],
     };
   }
 
-  const studyTypeA = analysisA.meta?.screener?.studyType || null;
-  const studyTypeB = analysisB.meta?.screener?.studyType || null;
+  const mapA = buildQuestionMap(analysisA);
+  const mapB = buildQuestionMap(analysisB);
 
-  if (studyTypeA && studyTypeB && studyTypeA !== studyTypeB) {
-    errors.push(`Study type mismatch: ${studyTypeA} vs ${studyTypeB}.`);
-  }
+  const codesA = [...mapA.keys()];
+  const codesB = [...mapB.keys()];
+  const unionCodes = [...new Set([...codesA, ...codesB])].sort();
+  const sharedCodes = unionCodes.filter((code) => mapA.has(code) && mapB.has(code));
+  const onlyInWaveA = unionCodes.filter((code) => mapA.has(code) && !mapB.has(code));
+  const onlyInWaveB = unionCodes.filter((code) => mapB.has(code) && !mapA.has(code));
 
-  const codesA = getComparableQuestionCodes(analysisA);
-  const codesB = getComparableQuestionCodes(analysisB);
+  const totalUniqueQuestions = unionCodes.length;
+  const overlapPct = totalUniqueQuestions
+    ? round1((sharedCodes.length / totalUniqueQuestions) * 100)
+    : 0;
 
-  if (!codesA.length || !codesB.length) {
-    errors.push('One or both sheets have no comparable question codes.');
-  }
-
-  const setB = new Set(codesB);
-  const intersection = codesA.filter((code) => setB.has(code));
-  const union = [...new Set([...codesA, ...codesB])];
-
-  const overlapRatio = union.length ? intersection.length / union.length : 0;
-
-  if (overlapRatio < 0.8) {
-    errors.push(
-      `Question-code overlap is too low (${(overlapRatio * 100).toFixed(1)}%). Expected at least 80%.`
-    );
-  } else if (overlapRatio < 0.9) {
-    warnings.push(
-      `Question-code overlap is moderate (${(overlapRatio * 100).toFixed(1)}%). Comparison is allowed, but review differences carefully.`
-    );
+  const warnings = [];
+  if (overlapPct < 50) {
+    warnings.push('Question overlap is below 50%. Comparison should open in questions-only mode.');
   }
 
   return {
-    valid: errors.length === 0,
-    errors,
+    valid: true,
+    errors: [],
     warnings,
-    metrics: {
-      studyTypeA,
-      studyTypeB,
-      codeCountA: codesA.length,
-      codeCountB: codesB.length,
-      overlapCount: intersection.length,
-      unionCount: union.length,
-      overlapRatio: Number(overlapRatio.toFixed(4)),
-      sharedCodes: intersection,
-    },
+    overlapPct,
+    comparisonMode: overlapPct >= 50 ? 'full' : 'questions-only',
+    totalWaveAQuestions: mapA.size,
+    totalWaveBQuestions: mapB.size,
+    totalUniqueQuestions,
+    sharedQuestionCount: sharedCodes.length,
+    onlyInWaveACount: onlyInWaveA.length,
+    onlyInWaveBCount: onlyInWaveB.length,
   };
 }

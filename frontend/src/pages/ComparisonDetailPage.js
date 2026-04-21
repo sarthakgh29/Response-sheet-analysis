@@ -222,42 +222,16 @@ function renderTimeline(comp) {
   const totalWaveA = rows.reduce((sum, row) => sum + (row.waveA || 0), 0);
   const totalWaveB = rows.reduce((sum, row) => sum + (row.waveB || 0), 0);
 
-  const peakA = rows.reduce(
-    (best, row) => ((row.waveA || 0) > (best.waveA || -1) ? row : best),
-    rows[0]
-  );
-  const peakB = rows.reduce(
-    (best, row) => ((row.waveB || 0) > (best.waveB || -1) ? row : best),
-    rows[0]
-  );
+  const peakA = rows.reduce((best, row) => ((row.waveA || 0) > (best.waveA || -1) ? row : best), rows[0]);
+  const peakB = rows.reduce((best, row) => ((row.waveB || 0) > (best.waveB || -1) ? row : best), rows[0]);
 
-  const waveAFieldingDays =
-    comp.timelineComparison?.waveAFieldingDays ??
-    rows.filter((row) => (row.waveA || 0) > 0).length;
+  const waveAFieldingDays = comp.timelineComparison?.waveAFieldingDays ?? rows.filter((row) => (row.waveA || 0) > 0).length;
+  const waveBFieldingDays = comp.timelineComparison?.waveBFieldingDays ?? rows.filter((row) => (row.waveB || 0) > 0).length;
 
-  const waveBFieldingDays =
-    comp.timelineComparison?.waveBFieldingDays ??
-    rows.filter((row) => (row.waveB || 0) > 0).length;
-
-  const waveAStartDate =
-    comp.timelineComparison?.waveAStartDate ||
-    rows.find((row) => row.waveADate)?.waveADate ||
-    '--';
-
-  const waveAEndDate =
-    comp.timelineComparison?.waveAEndDate ||
-    [...rows].reverse().find((row) => row.waveADate)?.waveADate ||
-    '--';
-
-  const waveBStartDate =
-    comp.timelineComparison?.waveBStartDate ||
-    rows.find((row) => row.waveBDate)?.waveBDate ||
-    '--';
-
-  const waveBEndDate =
-    comp.timelineComparison?.waveBEndDate ||
-    [...rows].reverse().find((row) => row.waveBDate)?.waveBDate ||
-    '--';
+  const waveAStartDate = comp.timelineComparison?.waveAStartDate || rows.find((row) => row.waveADate)?.waveADate || '--';
+  const waveAEndDate = comp.timelineComparison?.waveAEndDate || [...rows].reverse().find((row) => row.waveADate)?.waveADate || '--';
+  const waveBStartDate = comp.timelineComparison?.waveBStartDate || rows.find((row) => row.waveBDate)?.waveBDate || '--';
+  const waveBEndDate = comp.timelineComparison?.waveBEndDate || [...rows].reverse().find((row) => row.waveBDate)?.waveBDate || '--';
 
   return `
     <section class="cmp-pane-stack">
@@ -318,6 +292,105 @@ function renderTimeline(comp) {
   `;
 }
 
+function renderQuestionOverlap(comp) {
+  const q = comp.questionOverlapSummary || {};
+  const removedPct = q.totalUniqueQuestions ? Number(((q.onlyInWaveACount / q.totalUniqueQuestions) * 100).toFixed(1)) : 0;
+  const addedPct = q.totalUniqueQuestions ? Number(((q.onlyInWaveBCount / q.totalUniqueQuestions) * 100).toFixed(1)) : 0;
+  const modeLabel = q.comparisonMode === 'full' ? 'Full comparison mode' : 'Questions-only mode';
+
+  const renderQuestionList = (title, subtitle, rows = [], emptyText) => `
+    <article class="cmp-card cmp-question-list-card">
+      <div class="cmp-card-title">${title}</div>
+      <div class="cmp-question-list-subtitle">${subtitle}</div>
+      ${rows.length ? `
+        <div class="cmp-question-list-scroll">
+          ${rows.map((row) => `
+            <div class="cmp-question-list-item">
+              <div class="cmp-question-code">[${row.code}]</div>
+              <div class="cmp-question-copy">${row.text}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<div class="cmp-empty">${emptyText}</div>`}
+    </article>
+  `;
+
+  return `
+    <section class="cmp-pane-stack">
+      <section class="cmp-overlap-summary-grid">
+        <article class="cmp-card cmp-overlap-metric-card">
+          <div class="cmp-card-title">Question Overlap</div>
+          <div class="cmp-overlap-big">${q.overlapPct ?? 0}%</div>
+          <div class="cmp-overlap-note">${q.sharedQuestionCount || 0} of ${q.totalUniqueQuestions || 0} unique analyzable questions are shared across both waves.</div>
+        </article>
+        <article class="cmp-card cmp-overlap-metric-card">
+          <div class="cmp-card-title">Comparison Availability</div>
+          <div class="cmp-overlap-pill ${q.comparisonMode === 'full' ? 'full' : 'limited'}">${modeLabel}</div>
+          <div class="cmp-overlap-note">${q.comparisonMode === 'full' ? 'Other tabs remain available because overlap is at least 50%.' : 'Other tabs are hidden because overlap is below 50%.'}</div>
+        </article>
+        <article class="cmp-card cmp-overlap-metric-card">
+          <div class="cmp-card-title">Same Questions</div>
+          <div class="cmp-overlap-big">${q.sharedQuestionCount || 0}</div>
+          <div class="cmp-overlap-note">${q.samePct ?? 0}% of the combined question universe is shared between ${comp.meta.waveALabel} and ${comp.meta.waveBLabel}.</div>
+        </article>
+        <article class="cmp-card cmp-overlap-metric-card">
+          <div class="cmp-card-title">Changed Question Set</div>
+          <div class="cmp-overlap-big">${(q.onlyInWaveACount || 0) + (q.onlyInWaveBCount || 0)}</div>
+          <div class="cmp-overlap-note">${q.differentPct ?? 0}% of the combined question universe differs between the two waves.</div>
+        </article>
+      </section>
+
+      <section class="cmp-two-col cmp-question-list-grid">
+        <article class="cmp-card">
+          <div class="cmp-card-title">Question Set Summary</div>
+          <div class="cmp-summary-grid">
+            <div class="cmp-summary-row"><span>${comp.meta.waveALabel} analyzable questions</span><strong>${q.totalWaveAQuestions || 0}</strong></div>
+            <div class="cmp-summary-row"><span>${comp.meta.waveBLabel} analyzable questions</span><strong>${q.totalWaveBQuestions || 0}</strong></div>
+            <div class="cmp-summary-row"><span>Same in both waves</span><strong>${q.sharedQuestionCount || 0} (${q.samePct ?? 0}%)</strong></div>
+            <div class="cmp-summary-row"><span>Present only in ${comp.meta.waveALabel}</span><strong>${q.onlyInWaveACount || 0} (${removedPct}%)</strong></div>
+            <div class="cmp-summary-row"><span>Present only in ${comp.meta.waveBLabel}</span><strong>${q.onlyInWaveBCount || 0} (${addedPct}%)</strong></div>
+            <div class="cmp-summary-row"><span>Total unique questions across both waves</span><strong>${q.totalUniqueQuestions || 0}</strong></div>
+          </div>
+        </article>
+
+        <article class="cmp-card">
+          <div class="cmp-card-title">Interpretation</div>
+          <div class="cmp-highlight-block">
+            <div class="cmp-highlight-label">What this means</div>
+            <div class="cmp-highlight-question">
+              <span class="cmp-question-copy">Use this tab to understand how much of the questionnaire stayed the same versus what changed from ${comp.meta.waveALabel} to ${comp.meta.waveBLabel}. When overlap drops below 50%, the comparison page switches to questions-only mode so the app does not overstate findings from weakly comparable surveys.</span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="cmp-two-col cmp-question-list-grid">
+        ${renderQuestionList(
+          'Same as last wave',
+          `${q.sharedQuestionCount || 0} shared questions (${q.samePct ?? 0}%)`,
+          q.sharedQuestions || [],
+          'No shared questions found.'
+        )}
+        ${renderQuestionList(
+          `Different from ${comp.meta.waveALabel}`,
+          `Questions present in ${comp.meta.waveALabel} but not in ${comp.meta.waveBLabel}`,
+          q.onlyInWaveA || [],
+          `No questions were removed from ${comp.meta.waveALabel}.`
+        )}
+      </section>
+
+      <section class="cmp-question-list-grid cmp-single-list-grid">
+        ${renderQuestionList(
+          `New in ${comp.meta.waveBLabel}`,
+          `Questions present in ${comp.meta.waveBLabel} but not in ${comp.meta.waveALabel}`,
+          q.onlyInWaveB || [],
+          `No new questions were added in ${comp.meta.waveBLabel}.`
+        )}
+      </section>
+    </section>
+  `;
+}
+
 function renderChat(messages, comp) {
   const suggestions = [
     `What improved most from ${comp.meta.waveALabel} to ${comp.meta.waveBLabel}?`,
@@ -362,16 +435,26 @@ const panes = {
   scale: renderScale,
   categorical: renderCategorical,
   timeline: renderTimeline,
+  questions: renderQuestionOverlap,
 };
 
-function comparisonTabs(active) {
-  const tabs = [
+function getComparisonTabs(comp) {
+  if ((comp.questionOverlapSummary?.comparisonMode || 'full') === 'questions-only') {
+    return [['questions', 'Question Changes']];
+  }
+
+  return [
     ['overview', 'Overview'],
     ['scale', 'Scale'],
     ['categorical', 'Categorical'],
     ['timeline', 'Timeline'],
     ['chat', 'Chat'],
+    ['questions', 'Question Changes'],
   ];
+}
+
+function comparisonTabs(active, comp) {
+  const tabs = getComparisonTabs(comp);
 
   return `
     <div class="cmp-tab-row">
@@ -389,7 +472,7 @@ export async function renderComparisonDetailPage(root, comparisonSetId) {
   const comparison = data.comparison;
   const comp = data.comparisonJson;
 
-  let activeTab = 'overview';
+  let activeTab = (comp.questionOverlapSummary?.comparisonMode || 'full') === 'questions-only' ? 'questions' : 'overview';
   const chatMessages = [];
 
   function paneHtml() {
@@ -449,10 +532,7 @@ export async function renderComparisonDetailPage(root, comparisonSetId) {
         content: reply.content || 'No response generated.',
       });
     } catch (error) {
-      chatMessages.push({
-        role: 'assistant',
-        content: `Error: ${error.message}`,
-      });
+      chatMessages.push({ role: 'assistant', content: `Error: ${error.message}` });
     }
 
     draw();
@@ -492,7 +572,7 @@ export async function renderComparisonDetailPage(root, comparisonSetId) {
             </article>
           </section>
 
-          ${comparisonTabs(activeTab)}
+          ${comparisonTabs(activeTab, comp)}
           <section id="cmp-pane">${paneHtml()}</section>
         </section>
       </main>
